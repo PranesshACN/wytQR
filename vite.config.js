@@ -11,12 +11,12 @@ export default defineConfig(({ mode }) => {
         '/api/oauth/token': {
           target: 'https://api.wytnet.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/oauth\/token/, '/oauth/token'),
-          configure: (proxy, options) => {
-            proxy.on('proxyReq', (proxyReq, req, res) => {
-              // Inject client credentials if needed or log
-            });
-          }
+          rewrite: (path) => path.replace(/^\/api\/oauth\/token/, '/oauth/token')
+        },
+        '/api/oauth/userinfo': {
+          target: 'https://api.wytnet.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/oauth\/userinfo/, '/oauth/userinfo')
         }
       }
     },

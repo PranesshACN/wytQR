@@ -5,6 +5,10 @@
       "destination": "https://api.wytnet.com/oauth/token"
     },
     {
+      "source": "/api/oauth/userinfo",
+      "destination": "https://api.wytnet.com/oauth/userinfo"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
