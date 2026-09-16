@@ -64,10 +64,10 @@ export function renderLandingPage(container, onNavigate, onWhitePassLogin, isLog
           </div>
 
           <div class="demo-quick-presets" id="landing-demo-presets">
-            <button class="demo-preset-btn active" data-color="#6366f1" data-end="#a855f7" data-shape="rounded">Neon</button>
-            <button class="demo-preset-btn" data-color="#f6d365" data-end="#fda085" data-shape="classy">Gold</button>
-            <button class="demo-preset-btn" data-color="#10b981" data-end="#06b6d4" data-shape="dots">Mint</button>
-            <button class="demo-preset-btn" data-color="#ff0844" data-end="#ffb199" data-shape="extra-rounded">Sunset</button>
+            <button class="demo-preset-btn active" data-color="#2563eb" data-end="#3b82f6" data-shape="rounded">Corporate Blue</button>
+            <button class="demo-preset-btn" data-color="#0f172a" data-end="#334155" data-shape="classy">Midnight Slate</button>
+            <button class="demo-preset-btn" data-color="#059669" data-end="#10b981" data-shape="dots">Emerald Pro</button>
+            <button class="demo-preset-btn" data-color="#4f46e5" data-end="#7c3aed" data-shape="extra-rounded">Royal Indigo</button>
           </div>
         </div>
       </div>
