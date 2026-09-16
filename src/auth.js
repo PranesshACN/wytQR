@@ -5,7 +5,7 @@ export const WYTPASS_CONFIG = {
   clientSecret: 'wps_7470d4cf64c43e8affa7ccbd2c499589b6b48e32',
   authUrl: 'https://wytnet.com/oauth/authorize',
   tokenUrl: 'https://api.wytnet.com/oauth/token',
-  redirectUri: 'http://localhost:3000/callback'
+  redirectUri: 'https://wytqr.vercel.app/callback'
 };
 
 export class AuthManager {
