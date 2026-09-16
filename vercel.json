@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/oauth/token",
+      "destination": "https://api.wytnet.com/oauth/token"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
