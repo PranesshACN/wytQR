@@ -919,7 +919,7 @@ function setupScannerModal() {
 
 // Theme Toggle Handler
 function setupThemeToggle() {
-  const savedTheme = localStorage.getItem('wyt_qr_theme') || 'dark';
+  const savedTheme = localStorage.getItem('wyt_qr_theme') || 'light';
   applyTheme(savedTheme);
 
   const toggleBtns = [
