@@ -919,16 +919,32 @@ function setupScannerModal() {
 
 // Theme Toggle Handler
 function setupThemeToggle() {
-  const btn = document.getElementById('btn-theme-toggle');
-  btn?.addEventListener('click', () => {
-    const html = document.documentElement;
-    const isDark = html.classList.contains('dark');
-    if (isDark) {
-      html.classList.remove('dark');
-      html.classList.add('light');
-    } else {
-      html.classList.remove('light');
-      html.classList.add('dark');
-    }
+  const savedTheme = localStorage.getItem('wyt_qr_theme') || 'dark';
+  applyTheme(savedTheme);
+
+  const toggleBtns = [
+    document.getElementById('btn-theme-toggle'),
+    document.getElementById('btn-landing-theme-toggle')
+  ];
+
+  toggleBtns.forEach(btn => {
+    btn?.addEventListener('click', () => {
+      const html = document.documentElement;
+      const isDark = html.classList.contains('dark');
+      const newTheme = isDark ? 'light' : 'dark';
+      applyTheme(newTheme);
+      localStorage.setItem('wyt_qr_theme', newTheme);
+    });
   });
+}
+
+function applyTheme(theme) {
+  const html = document.documentElement;
+  if (theme === 'light') {
+    html.classList.remove('dark');
+    html.classList.add('light');
+  } else {
+    html.classList.remove('light');
+    html.classList.add('dark');
+  }
 }
