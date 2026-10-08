@@ -24,6 +24,8 @@ export class Router {
     // Handle OAuth callback URL cleanly
     if (window.location.search.includes('code=')) {
       hash = 'generator';
+    } else if (window.location.search.includes('error=')) {
+      hash = 'login';
     }
 
     // Run Auth Guard if defined

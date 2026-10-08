@@ -24,9 +24,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize Auth Manager
   authManager = new AuthManager();
 
-  // Initialize History Manager
-  historyManager = new HistoryManager();
+  // Validate & hydrate session from backend HttpOnly cookies
+  await authManager.checkSession();
+
+  // Initialize History Manager scoped with WytNet canonical sub
+  historyManager = new HistoryManager(authManager.getUserSub());
   updateHistoryBadge();
+
+  // Listen to auth state transitions
+  authManager.onAuthStateChanged((user) => {
+    if (historyManager) {
+      historyManager.setUser(user?.sub || null);
+      updateHistoryBadge();
+      renderHistoryList();
+    }
+    updateAuthUI();
+  });
 
   // Initialize Router with Authentication Route Guard
   router = new Router(
@@ -35,7 +48,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderLandingPage(
           document.getElementById('view-home'),
           (route) => router.navigate(route),
-          () => authManager.loginWithWhitePass(),
+          () => authManager.loginWithWytPass(),
           authManager.isLoggedIn()
         );
         updateAuthUI();
@@ -64,14 +77,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     (targetRoute) => {
       const loggedIn = authManager && authManager.isLoggedIn();
       if (targetRoute === 'generator' && !loggedIn) {
-        showToast('Please sign in with WhitePass to access the QR Code Studio', 'info');
+        showToast('Please sign in with WytPass to access the QR Code Studio', 'info');
         return 'login';
       }
       return targetRoute;
     }
   );
 
-  // Process WhitePass SSO Callback if redirected back with authorization code
+  // Check if redirected with authorization code
   await checkSSOCallback();
 
   // Initialize QR Studio Engine
@@ -106,19 +119,20 @@ function showToast(message, type = 'info') {
   }, 3000);
 }
 
-// WhitePass SSO Callback Check
+// WytPass SSO Callback Check
 async function checkSSOCallback() {
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.has('code')) {
     try {
-      const user = await authManager.handleAuthCallback();
+      showToast('Processing WytPass authentication handshake...', 'info');
+      const user = await authManager.checkSession();
       if (user) {
-        showToast(`Welcome back, ${user.name}! WhitePass SSO login successful. Opening QR Studio...`, 'success');
+        showToast(`Welcome back, ${user.name}! WytPass SSO login successful.`, 'success');
         updateAuthUI();
         if (router) router.navigate('generator');
       }
     } catch (err) {
-      showToast('WhitePass SSO login failed: ' + err.message, 'error');
+      showToast('WytPass login check: ' + err.message, 'error');
     }
   }
 }
@@ -149,19 +163,19 @@ function updateAuthUI() {
     if (btnTopRightLogin) btnTopRightLogin.classList.add('hidden');
     if (userPill) userPill.classList.remove('hidden');
 
-    if (txtName) txtName.textContent = user.name || 'WhitePass User';
+    if (txtName) txtName.textContent = user.name || 'WytPass User';
     if (txtEmail) txtEmail.textContent = user.email || 'user@wytnet.com';
-    if (imgAvatar) imgAvatar.src = user.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=WhitePass';
+    if (imgAvatar) imgAvatar.src = user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.sub || 'wyt'}`;
   } else {
     if (btnTopRightLogin) btnTopRightLogin.classList.remove('hidden');
     if (userPill) userPill.classList.add('hidden');
   }
 
   // Attach logout handler
-  document.getElementById('btn-logout')?.addEventListener('click', () => {
-    authManager.logout();
+  document.getElementById('btn-logout')?.addEventListener('click', async () => {
+    await authManager.logout();
     updateAuthUI();
-    showToast('Signed out of WhitePass SSO', 'info');
+    showToast('Signed out of WytNet centralized session', 'info');
     if (router) router.navigate('home');
   });
 }

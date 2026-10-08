@@ -1,12 +1,8 @@
 {
   "rewrites": [
     {
-      "source": "/api/oauth/token",
-      "destination": "https://api.wytnet.com/oauth/token"
-    },
-    {
-      "source": "/api/oauth/userinfo",
-      "destination": "https://api.wytnet.com/oauth/userinfo"
+      "source": "/api/auth/(.*)",
+      "destination": "/api/auth/[...path]"
     },
     {
       "source": "/(.*)",

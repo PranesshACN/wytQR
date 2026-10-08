@@ -1,216 +1,356 @@
-const AUTH_STORAGE_KEY = 'wyt_pass_session_v1';
+/**
+ * WytNet / WytPass Centralized Identity Client SDK
+ * 
+ * Production-ready authentication client for WytQR SPA.
+ * Fully decoupled from local passwords & credential storage.
+ * All authentication, registration, recovery, and sessions are centrally managed by WytNet.
+ * 
+ * Security Guard: client_secret is NEVER present or referenced here.
+ */
+
+const LOCAL_SESSION_KEY = 'wyt_user_profile_v2';
 
 export const WYTPASS_CONFIG = {
-  clientId: 'wp_9608924f8edf0a60f90c',
-  clientSecret: 'wps_7470d4cf64c43e8affa7ccbd2c499589b6b48e32',
-  authUrl: 'https://wytnet.com/oauth/authorize',
-  tokenUrl: 'https://api.wytnet.com/oauth/token',
-  userinfoUrl: 'https://api.wytnet.com/oauth/userinfo',
-  get redirectUri() {
-    return (typeof window !== 'undefined' && window.location && window.location.origin) 
-      ? `${window.location.origin}/callback` 
-      : 'https://wytqr.vercel.app/callback';
-  }
+  clientId: 'wn_live_545c7e67e86bafa230422c78ce15194a',
+  authUrl: 'https://test.wytnet.com/oauth/authorize',
+  fallbackAuthUrl: 'https://wytnet.com/oauth/authorize',
+  redirectUri: 'http://localhost:3000/api/auth/callback/whitenet',
+  scope: 'openid profile email'
 };
+
+// ============================================================================
+// PKCE (RFC 7636) Cryptographic Utilities using Browser Web Crypto API
+// ============================================================================
+
+/**
+ * Generates high-entropy cryptographic code verifier
+ */
+function generateCodeVerifier(length = 64) {
+  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+  const randomValues = new Uint8Array(length);
+  window.crypto.getRandomValues(randomValues);
+  let verifier = '';
+  for (let i = 0; i < length; i++) {
+    verifier += possible[randomValues[i] % possible.length];
+  }
+  return verifier;
+}
+
+/**
+ * Generates S256 Code Challenge from Code Verifier: BASE64URL(SHA256(verifier))
+ */
+async function generateCodeChallenge(verifier) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const digest = await window.crypto.subtle.digest('SHA-256', data);
+  
+  // Base64URL encoding
+  let str = '';
+  const bytes = new Uint8Array(digest);
+  for (let i = 0; i < bytes.byteLength; i++) {
+    str += String.fromCharCode(bytes[i]);
+  }
+  return btoa(str)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+/**
+ * Random state generator for CSRF mitigation
+ */
+function generateRandomState() {
+  const randomValues = new Uint8Array(16);
+  window.crypto.getRandomValues(randomValues);
+  return Array.from(randomValues, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ============================================================================
+// AuthManager Class
+// ============================================================================
 
 export class AuthManager {
   constructor() {
-    this.session = this.loadSession();
+    this.user = this.loadCachedUser();
+    this.listeners = new Set();
   }
 
-  loadSession() {
+  /**
+   * Subscribe to auth state changes
+   */
+  onAuthStateChanged(listener) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  notifyListeners() {
+    for (const listener of this.listeners) {
+      try {
+        listener(this.user);
+      } catch (e) {
+        console.error('Error in auth state listener:', e);
+      }
+    }
+  }
+
+  loadCachedUser() {
     try {
-      const data = localStorage.getItem(AUTH_STORAGE_KEY);
+      const data = localStorage.getItem(LOCAL_SESSION_KEY);
       return data ? JSON.parse(data) : null;
-    } catch (e) {
-      console.error('Failed to load auth session:', e);
+    } catch {
       return null;
     }
   }
 
-  saveSession(sessionData) {
-    this.session = sessionData;
+  saveCachedUser(user) {
+    this.user = user;
     try {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessionData));
+      if (user) {
+        localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(user));
+      } else {
+        localStorage.removeItem(LOCAL_SESSION_KEY);
+      }
     } catch (e) {
-      console.error('Failed to save auth session:', e);
+      console.warn('Failed to cache user session:', e);
     }
-  }
-
-  logout() {
-    this.session = null;
-    localStorage.removeItem(AUTH_STORAGE_KEY);
+    this.notifyListeners();
   }
 
   isLoggedIn() {
-    return !!(this.session && this.session.accessToken);
+    return !!(this.user && this.user.sub);
   }
 
   getUser() {
-    return this.session ? this.session.user : null;
+    return this.user;
   }
 
-  loginWithWhitePass() {
-    const state = Math.random().toString(36).substring(2, 15);
-    sessionStorage.setItem('wyt_oauth_state', state);
-
-    const params = new URLSearchParams({
-      response_type: 'code',
-      client_id: WYTPASS_CONFIG.clientId,
-      redirect_uri: WYTPASS_CONFIG.redirectUri,
-      scope: 'openid profile email',
-      state: state
-    });
-
-    const targetUrl = `${WYTPASS_CONFIG.authUrl}?${params.toString()}`;
-    window.location.href = targetUrl;
+  getUserSub() {
+    return this.user ? this.user.sub : null;
   }
 
-  async handleAuthCallback() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-
-    if (!code) return null;
-
-    // Clean up query string from browser URL bar
-    window.history.replaceState({}, document.title, window.location.pathname);
-
+  /**
+   * Validate and hydrate user session from backend HttpOnly cookies
+   */
+  async checkSession() {
     try {
-      // Step 1: Exchange authorization code for access token
-      const tokenResponse = await this.exchangeCodeForToken(code);
+      const res = await fetch('/api/auth/session', {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        credentials: 'include'
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+          this.saveCachedUser(data.user);
+          return data.user;
+        }
+      }
       
-      if (!tokenResponse || !tokenResponse.access_token) {
-        throw new Error(tokenResponse?.error_description || tokenResponse?.error || 'Token exchange failed');
+      // If server reports not authenticated, clear local cache
+      this.saveCachedUser(null);
+      return null;
+    } catch (err) {
+      console.warn('Session verification check failed:', err);
+      // Retain existing cached user temporarily in case of offline/network hiccup
+      return this.user;
+    }
+  }
+
+  /**
+   * FLOW A: Direct Email + Password Authentication
+   * Forwards credentials to backend which delegates verification to WytNet Auth-Layer
+   */
+  async loginWithEmail(email, password) {
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error('Too many authentication attempts. Please wait a moment and try again.');
+        }
+        throw new Error(data.error || data.detail || 'Authentication failed. Please verify your credentials.');
       }
 
-      const accessToken = tokenResponse.access_token;
-
-      // Step 2: Fetch profile from UserInfo endpoint (GET https://api.wytnet.com/oauth/userinfo)
-      const userProfile = await this.fetchUserInfo(accessToken, tokenResponse);
-
-      const sessionData = {
-        accessToken: accessToken,
-        refreshToken: tokenResponse.refresh_token || null,
-        expiresAt: Date.now() + (tokenResponse.expires_in || 3600) * 1000,
-        user: userProfile
-      };
-
-      this.saveSession(sessionData);
-      return userProfile;
+      this.saveCachedUser(data.user);
+      return data.user;
     } catch (err) {
-      console.error('OAuth Callback Processing Error:', err);
+      console.error('Email login error:', err);
       throw err;
     }
   }
 
-  async exchangeCodeForToken(code) {
-    const bodyParams = new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: WYTPASS_CONFIG.clientId,
-      client_secret: WYTPASS_CONFIG.clientSecret,
-      code: code,
-      redirect_uri: WYTPASS_CONFIG.redirectUri
-    });
+  /**
+   * FLOW B: "Continue with WytPass" (OAuth 2.0 / OIDC + PKCE)
+   * Generates PKCE code challenge and redirects user to WytNet Centralized Authorize URL
+   */
+  async loginWithWytPass() {
+    try {
+      const codeVerifier = generateCodeVerifier(64);
+      const codeChallenge = await generateCodeChallenge(codeVerifier);
+      const state = generateRandomState();
 
-    const endpoints = ['/api/oauth/token', WYTPASS_CONFIG.tokenUrl];
-    let lastError = null;
+      // Persist code verifier and state in session storage and cookie for callback verification
+      sessionStorage.setItem('wyt_pkce_verifier', codeVerifier);
+      sessionStorage.setItem('wyt_oauth_state', state);
 
-    for (const endpoint of endpoints) {
-      try {
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json'
-          },
-          body: bodyParams.toString()
-        });
+      // Also set verifier cookie so backend callback handler (/api/auth/callback/whitenet) has it
+      document.cookie = `wyt_pkce_verifier=${encodeURIComponent(codeVerifier)}; path=/; max-age=600; SameSite=Lax`;
+      document.cookie = `wyt_oauth_state=${encodeURIComponent(state)}; path=/; max-age=600; SameSite=Lax`;
 
-        if (response.ok) {
-          const data = await response.json();
-          return data;
-        } else {
-          const errorData = await response.json().catch(() => null);
-          lastError = new Error(errorData?.message || errorData?.error || `HTTP ${response.status}`);
-        }
-      } catch (err) {
-        lastError = err;
-      }
+      const params = new URLSearchParams({
+        client_id: WYTPASS_CONFIG.clientId,
+        redirect_uri: WYTPASS_CONFIG.redirectUri,
+        response_type: 'code',
+        scope: WYTPASS_CONFIG.scope,
+        state: state,
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256'
+      });
+
+      const authorizeUrl = `${WYTPASS_CONFIG.authUrl}?${params.toString()}`;
+      window.location.href = authorizeUrl;
+    } catch (err) {
+      console.error('Failed to initiate WytPass PKCE flow:', err);
+      throw err;
     }
-
-    // Demo fallback for dev/testing if remote token server is unreachable
-    console.warn('Remote token server unreachable, constructing authenticated session fallback:', lastError);
-    return {
-      access_token: 'wyt_access_' + Math.random().toString(36).substring(2),
-      expires_in: 86400,
-      user: {
-        id: 'usr_whitepass_101',
-        name: 'WytPass Member',
-        email: 'user@wytnet.com',
-        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=WytPassUser'
-      }
-    };
   }
 
-  async fetchUserInfo(accessToken, tokenData) {
-    const userinfoEndpoints = ['/api/oauth/userinfo', WYTPASS_CONFIG.userinfoUrl];
+  /**
+   * USER REGISTRATION: Delegate account creation to WytNet
+   */
+  async register({ name, email, password, phone }) {
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ name, email, password, phone })
+      });
 
-    for (const endpoint of userinfoEndpoints) {
-      try {
-        const res = await fetch(endpoint, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Accept': 'application/json'
-          }
-        });
+      const data = await response.json().catch(() => ({}));
 
-        if (res.ok) {
-          const profileData = await res.json();
-          return this.mapProfileData(profileData);
+      if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error('Too many registration attempts. Please try again shortly.');
         }
-      } catch (e) {
-        console.warn('UserInfo fetch failed on', endpoint, e);
+        throw new Error(data.error || data.detail || 'Registration failed. Please check your details.');
       }
-    }
 
-    // Fall back to extracting profile from token response or id_token
-    return this.mapProfileData(tokenData);
+      if (data.user) {
+        this.saveCachedUser(data.user);
+      }
+
+      return data;
+    } catch (err) {
+      console.error('Registration error:', err);
+      throw err;
+    }
   }
 
-  mapProfileData(profileData) {
-    // Follows profile mapping spec in WYTQR_nextjs_Integration.md:
-    // profile.user.id || profile.sub
-    // profile.user.name || profile.name || profile.email
-    // profile.user.profilePicture || profile.picture
-    // profile.subscriptions
-    const user = profileData.user || {};
-    
-    // Parse JWT id_token payload if present
-    let idTokenPayload = {};
-    if (profileData.id_token) {
-      try {
-        const parts = profileData.id_token.split('.');
-        if (parts.length === 3) {
-          idTokenPayload = JSON.parse(atob(parts[1]));
+  /**
+   * FORGOT PASSWORD: Request password reset link / token from WytNet
+   */
+  async forgotPassword(email) {
+    try {
+      const response = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ email })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error('Too many requests. Please wait a moment before trying again.');
         }
-      } catch (e) {
-        console.error('Failed to parse id_token:', e);
+        throw new Error(data.error || data.detail || 'Unable to process password reset request.');
       }
+
+      return data;
+    } catch (err) {
+      console.error('Forgot password error:', err);
+      throw err;
     }
+  }
 
-    const id = user.id || profileData.id || profileData.sub || idTokenPayload.sub || 'usr_' + Math.random().toString(36).substring(2, 8);
-    const name = user.name || profileData.name || user.email || profileData.email || idTokenPayload.name || 'WytPass Member';
-    const email = user.email || profileData.email || idTokenPayload.email || 'member@wytnet.com';
-    const avatar = user.profilePicture || user.avatar || profileData.picture || profileData.avatar || idTokenPayload.picture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${id}`;
-    const subscriptions = profileData.subscriptions || user.subscriptions || [];
+  /**
+   * RESET PASSWORD: Confirm new password with reset token on WytNet
+   */
+  async resetPassword({ token, new_password, confirm_password }) {
+    try {
+      const response = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ token, new_password, confirm_password })
+      });
 
-    return {
-      id: id,
-      name: name,
-      email: email,
-      avatar: avatar,
-      subscriptions: subscriptions
-    };
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error('Too many requests. Please try again shortly.');
+        }
+        throw new Error(data.error || data.detail || 'Password reset failed. Invalid or expired token.');
+      }
+
+      return data;
+    } catch (err) {
+      console.error('Reset password error:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * REFRESH TOKEN: Manually refresh tokens via backend
+   */
+  async refreshToken() {
+    try {
+      const response = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        credentials: 'include'
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * LOGOUT: Revoke tokens on WytNet & clear HttpOnly cookies + local cache
+   */
+  async logout() {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      });
+    } catch (err) {
+      console.warn('Logout network call error:', err);
+    } finally {
+      this.saveCachedUser(null);
+      sessionStorage.removeItem('wyt_pkce_verifier');
+      sessionStorage.removeItem('wyt_oauth_state');
+    }
   }
 }
