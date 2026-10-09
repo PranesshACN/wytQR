@@ -14,7 +14,7 @@ export const WYTPASS_CONFIG = {
   clientId: 'wn_live_545c7e67e86bafa230422c78ce15194a',
   authUrl: 'https://wytnet.com/oauth/authorize',
   fallbackAuthUrl: 'https://wytnet.com/oauth/authorize',
-  redirectUri: 'http://localhost:3000/api/auth/callback/whitenet',
+  redirectUri: 'https://wytqr.vercel.app/host:3000/api/auth/callback/whitenet',
   scope: 'openid profile email'
 };
 
