@@ -15,14 +15,14 @@ import crypto from 'crypto';
 export const WYTPASS_CONFIG = {
   clientId: process.env.WYTPASS_CLIENT_ID || 'wn_live_545c7e67e86bafa230422c78ce15194a',
   clientSecret: process.env.WYTPASS_CLIENT_SECRET || 'wn_secret_cb5cea3df277d74d542b95ad3dc3c08922bbc0b8485f6418',
-  issuer: process.env.WYTNET_ISSUER || 'https://test.api.wytnet.com',
+  issuer: process.env.WYTNET_ISSUER || 'https://api.wytnet.com',
   fallbackIssuer: process.env.WYTNET_FALLBACK_ISSUER || 'https://api.wytnet.com',
-  authUrl: process.env.WYTNET_AUTH_URL || 'https://test.wytnet.com/oauth/authorize',
+  authUrl: process.env.WYTNET_AUTH_URL || 'https://wytnet.com/oauth/authorize',
   fallbackAuthUrl: 'https://wytnet.com/oauth/authorize',
   redirectUri: process.env.WYTNET_REDIRECT_URI || 'http://localhost:3000/api/auth/callback/whitenet',
   scope: 'openid profile email',
-  jwksUrl: process.env.WYTNET_JWKS_URL || 'https://test.api.wytnet.com/.well-known/jwks.json',
-  discoveryUrl: process.env.WYTNET_DISCOVERY_URL || 'https://test.api.wytnet.com/.well-known/openid-configuration'
+  jwksUrl: process.env.WYTNET_JWKS_URL || 'https://api.wytnet.com/.well-known/jwks.json',
+  discoveryUrl: process.env.WYTNET_DISCOVERY_URL || 'https://api.wytnet.com/.well-known/openid-configuration'
 };
 
 // In-memory cache for JWKS public keys
@@ -77,7 +77,7 @@ export function normalizeUserProfile(userData = {}) {
 
 /**
  * FLOW A: Authenticate user with Direct Email + Password
- * POST https://test.api.wytnet.com/auth-layer/authenticate
+ * POST https://api.wytnet.com/auth-layer/authenticate
  */
 export async function authenticateWithWytNet(email, password) {
   const payload = {

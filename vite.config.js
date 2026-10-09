@@ -24,12 +24,12 @@ export default defineConfig(({ mode }) => {
       open: false,
       proxy: {
         '/api/oauth/token': {
-          target: process.env.WYTNET_ISSUER || 'https://test.api.wytnet.com',
+          target: process.env.WYTNET_ISSUER || 'https://api.wytnet.com',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/oauth\/token/, '/oauth/token')
         },
         '/api/oauth/userinfo': {
-          target: process.env.WYTNET_ISSUER || 'https://test.api.wytnet.com',
+          target: process.env.WYTNET_ISSUER || 'https://api.wytnet.com',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/oauth\/userinfo/, '/oauth/userinfo')
         }
